@@ -1,0 +1,6 @@
+.idea
+TestFXGL.iml
+logs
+pom.xml
+system/
+target/
