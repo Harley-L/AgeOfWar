@@ -5,18 +5,29 @@ import com.almasb.fxgl.app.GameSettings;
 import com.almasb.fxgl.dsl.FXGL;
 import com.almasb.fxgl.dsl.components.HealthIntComponent;
 import com.almasb.fxgl.physics.CollisionHandler;
+import com.sun.javafx.geom.Rectangle;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import com.almasb.fxgl.entity.Entity;
+import javafx.scene.Cursor;
+import javafx.scene.text.Text;
+import javafx.util.Duration;
 
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.*;
 
 
 public class ageofwar extends GameApplication {
+    @Override
+    protected void initGameVars(Map<String, Object> vars) {
+        vars.put("Gold", 0);
+    }
+
+    @Override
+    protected void initUI() {
+//        FXGL.addVarText("Gold",50,50);
+    }
+
     @Override
     protected void initSettings(GameSettings settings) {
         settings.setWidth(1000);
@@ -60,30 +71,30 @@ public class ageofwar extends GameApplication {
 
         ArrayList<String> enemy_troops = new ArrayList<>(Arrays.asList("Soldier", "Range"));
         ArrayList<EventHandler<ActionEvent>> enemy_troop_events = new ArrayList<>(Arrays.asList(
-                actionEvent -> FXGL.spawn("enemy_soldier", WIDTH-50, HEIGHT-120),
-                actionEvent -> FXGL.spawn("enemy_range", WIDTH-50, HEIGHT-120)));
+                actionEvent -> FXGL.spawn("enemy_soldier", WIDTH-100, HEIGHT-120),
+                actionEvent -> FXGL.spawn("enemy_range", WIDTH-100, HEIGHT-120)));
         DropDownMenu enemy_troop_dropDownMenu = new DropDownMenu("Enemy Troops",enemy_troops,enemy_troop_events);
         FXGL.addUINode(enemy_troop_dropDownMenu.getMenu(), WIDTH-450, 30);
 
         // Bases
         FXGL.spawn("base",10,HEIGHT-110);
-        FXGL.spawn("base",WIDTH-90,HEIGHT-110);
+        FXGL.spawn("enemy_base",WIDTH-90,HEIGHT-110);
 
+//        FXGL.addVarText("Gold",50,50);
+//        FXGL.addText("Gold: ",50,50);
+        FXGL.getGameScene().addUI();
     }
 
     private boolean attack(Entity s1, Entity s2) {
-        try {
-            var hp = s2.getComponent(HealthIntComponent.class);
-//            System.out.println(s1.getTypeComponent().getAttack());
-            hp.damage(50);
-            if (hp.getValue() <= 0) {
-                s2.removeFromWorld();
-                return true;
-            }
-            return false;
-        } catch(Exception e) {
+        if(!s1.isActive() || !s2.isActive())
+            return true;
+        var hp = s2.getComponent(HealthIntComponent.class);
+        hp.damage(EntityType.getEntityType(s1).getAttack());
+        if (hp.getValue() <= 0) {
+            s2.removeFromWorld();
             return true;
         }
+        return false;
         }
 
     @Override
@@ -103,11 +114,15 @@ public class ageofwar extends GameApplication {
             @Override
             protected void onCollisionEnd(Entity soldier1, Entity soldier2) {
                 if(soldier1.getX() > soldier2.getX()) {
-                    VelocityComponent comp = soldier2.getComponent(VelocityComponent.class);
-                    comp.end_collision();
+                    if(soldier2.isActive()) {
+                        VelocityComponent comp = soldier2.getComponent(VelocityComponent.class);
+                        comp.end_collision();
+                    }
                 } else {
-                    VelocityComponent comp = soldier1.getComponent(VelocityComponent.class);
-                    comp.end_collision();
+                    if(soldier1.isActive()) {
+                        VelocityComponent comp = soldier1.getComponent(VelocityComponent.class);
+                        comp.end_collision();
+                    }
                 }
             }
         };
@@ -116,7 +131,7 @@ public class ageofwar extends GameApplication {
         FXGL.getPhysicsWorld().addCollisionHandler(ch.copyFor(EntityType.RANGE,EntityType.SOLDIER));
 
 
-        CollisionHandler ch_enemy = new CollisionHandler(EntityType.SOLDIER, EntityType.SOLDIER) {
+        CollisionHandler ch_enemy = new CollisionHandler(EntityType.ENEMY_SOLDIER, EntityType.ENEMY_SOLDIER) {
             @Override
             protected void onCollisionBegin(Entity soldier1, Entity soldier2) {
                 if(soldier1.getX() < soldier2.getX()) {
@@ -131,57 +146,80 @@ public class ageofwar extends GameApplication {
             @Override
             protected void onCollisionEnd(Entity soldier1, Entity soldier2) {
                 if(soldier1.getX() < soldier2.getX()) {
-                    VelocityComponent comp = soldier2.getComponent(VelocityComponent.class);
-                    comp.end_collision();
+                    if(soldier2.isActive()) {
+                        VelocityComponent comp = soldier2.getComponent(VelocityComponent.class);
+                        comp.end_collision();
+                    }
                 } else {
-                    VelocityComponent comp = soldier1.getComponent(VelocityComponent.class);
-                    comp.end_collision();
+                    if(soldier1.isActive()) {
+                        VelocityComponent comp = soldier1.getComponent(VelocityComponent.class);
+                        comp.end_collision();
+                    }
                 }
             }
         };
-        FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy.copyFor(EntityType.ENEMY_SOLDIER,EntityType.ENEMY_SOLDIER));
+        FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy);
         FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy.copyFor(EntityType.ENEMY_RANGE,EntityType.ENEMY_SOLDIER));
-        FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy.copyFor(EntityType.RANGE,EntityType.ENEMY_RANGE));
+        FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy.copyFor(EntityType.ENEMY_RANGE,EntityType.ENEMY_RANGE));
 
         CollisionHandler ch_enemy_vs = new CollisionHandler(EntityType.SOLDIER, EntityType.ENEMY_SOLDIER) {
             @Override
             protected void onCollisionBegin(Entity soldier1, Entity soldier2) {
                 soldier2.getComponent(VelocityComponent.class).begin_collision();
                 soldier1.getComponent(VelocityComponent.class).begin_collision();
-                Timer timer = new Timer();
-                timer.schedule( new TimerTask() {
-                    public void run() {
-                        if(attack(soldier2,soldier1)) {
-                            timer.cancel();
-                        }
 
-                    }
-                }, 3000, 3000);
+                FXGL.getGameTimer().runAtInterval(() -> {
+                    if(soldier1.isActive() && soldier2.isActive())
+                        attack(soldier1, soldier2);
+                }, Duration.seconds(EntityType.getEntityType(soldier1).getAttack_speed()));
 
-                timer.schedule( new TimerTask() {
-                    public void run() {
-                        if(attack(soldier1,soldier2)) {
-                            timer.cancel();
-                        }
-                    }
-                }, 2000, 2000);
-
+                FXGL.getGameTimer().runAtInterval(() -> {
+                    if(soldier1.isActive() && soldier2.isActive())
+                        attack(soldier2, soldier1);
+                }, Duration.seconds(EntityType.getEntityType(soldier2).getAttack_speed()));
             }
 
             @Override
             protected void onCollisionEnd(Entity soldier1, Entity soldier2) {
-                try {
+                if(soldier1.isActive()) {
                     soldier1.getComponent(VelocityComponent.class).end_collision();
-                } catch(Exception ignored) {}
-                try {
+                    FXGL.inc("Gold", +50);
+                }
+                if(soldier2.isActive())
                     soldier2.getComponent(VelocityComponent.class).end_collision();
-                } catch(Exception ignored) {}
+
+                FXGL.getGameTimer().clear();
             }
         };
         FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy_vs);
         FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy_vs.copyFor(EntityType.RANGE,EntityType.ENEMY_RANGE));
         FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy_vs.copyFor(EntityType.SOLDIER,EntityType.ENEMY_RANGE));
         FXGL.getPhysicsWorld().addCollisionHandler(ch_enemy_vs.copyFor(EntityType.RANGE,EntityType.ENEMY_SOLDIER));
+
+        CollisionHandler ch_base = new CollisionHandler(EntityType.SOLDIER, EntityType.ENEMY_BASE) {
+            @Override
+            protected void onCollisionBegin(Entity soldier1, Entity base) {
+                soldier1.getComponent(VelocityComponent.class).begin_collision();
+
+                FXGL.getGameTimer().runAtInterval(() -> {
+                    if(soldier1.isActive() && base.isActive()) {
+                        attack(soldier1, base);
+                    }
+                }, Duration.seconds(EntityType.getEntityType(soldier1).getAttack_speed()));
+            }
+
+            @Override
+            protected void onCollisionEnd(Entity soldier1, Entity base) {
+                if(soldier1.isActive())
+                    soldier1.getComponent(VelocityComponent.class).end_collision();
+
+                FXGL.getGameTimer().clear();
+            }
+        };
+        FXGL.getPhysicsWorld().addCollisionHandler(ch_base);
+        FXGL.getPhysicsWorld().addCollisionHandler(ch_base.copyFor(EntityType.RANGE,EntityType.ENEMY_BASE));
+        FXGL.getPhysicsWorld().addCollisionHandler(ch_base.copyFor(EntityType.ENEMY_SOLDIER,EntityType.BASE));
+        FXGL.getPhysicsWorld().addCollisionHandler(ch_base.copyFor(EntityType.ENEMY_RANGE,EntityType.BASE));
     }
 
     public static void main(String[] args) {
@@ -191,7 +229,6 @@ public class ageofwar extends GameApplication {
 // TODO
 // Set speed and set attack dmg of entities properly (Stop Hard coding it)
 // Health bar leaves red trace when damaged
-// Bug where things cant spawn after something dies
 
 // TIPS
 //        FXGL.run(() -> FXGL.spawn("range", 50, 550), Duration.seconds(6.0));
