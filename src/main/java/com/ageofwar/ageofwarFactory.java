@@ -122,4 +122,19 @@ public class ageofwarFactory implements EntityFactory {
                 .with(hp)
                 .build();
     }
+
+    @Spawns("enemy_base")
+    public Entity newEnemyBase(SpawnData data) {
+        Pair<HealthIntComponent,ProgressBar> barPair = createHPBar(EntityType.BASE.getHp(),15);
+        var hp = barPair.getKey();
+        var hpView = barPair.getValue();
+
+        return FXGL.entityBuilder(data)
+                .with(new CollidableComponent(true))
+                .type(EntityType.ENEMY_BASE)
+                .viewWithBBox(new Rectangle(80,100,Color.BROWN))
+                .view(hpView)
+                .with(hp)
+                .build();
+    }
 }
